@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from .models import *
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
-
+from .vectorize import vectorize_product_with_reviews,vectorize_user_with_search,pd
 from django.shortcuts import render
 from .models import *
 from django.http import JsonResponse
@@ -24,23 +24,34 @@ from django.views.decorators.csrf import csrf_exempt
 
 def index(request):
     if request.method == 'POST' and 'image' in request.FILES:  
-        myimage = request.FILES['image']
-        image1=request.FILES['image1']
-        image2=request.FILES['image2']
-        image3=request.FILES['image3']  
-        name=request.POST.get("todo")
-        discription=request.POST.get("description")
-        price=request.POST.get("date")
+            myimage = request.FILES['image']
+            image1=request.FILES['image1']
+            image2=request.FILES['image2']
+            image3=request.FILES['image3']  
+            name=request.POST.get("todo")
+            discription=request.POST.get("description")
+            price=request.POST.get("date")
         # todo311=request.POST.get("course")
-        quanty=request.POST.get("quant")
-        mod=request.POST.get("model")
-        off=request.POST.get("offers")
-        obj=Gallery(name=name,price=price,model=mod,quantity=quanty,offers=off,discription=discription,feedimage=myimage,image1=image1,image2=image2,image3=image3,user=request.user)
-        obj.save()
-        data=Gallery.objects.all()
-        return redirect(adminpage)
-    gallery_images = Gallery.objects.all()
-    return render(request, "index.html")
+            quanty=request.POST.get("quant")
+            mod=request.POST.get("model")
+            off=request.POST.get("offers")
+            obj=Gallery(name=name,price=price,model=mod,quantity=quanty,offers=off,discription=discription,feedimage=myimage,image1=image1,image2=image2,image3=image3,user=request.user)
+            obj.save()
+            pro_data = [{
+                "pro_id": obj.id,
+                "name": name,
+                "rating": 0,
+                "description": discription,
+                "reviews": ''
+            }]
+            df = pd.DataFrame(pro_data)
+            product_vector = vectorize_product_with_reviews(df)
+            print('pro',product_vector)
+            obj.vector_data = json.dumps(product_vector[0].tolist())
+            obj.save()
+            return redirect('adminpage')
+    return render(request,'main/index.html')
+    
 def verifyotp(request):
     if request.POST:
         otp = request.POST.get('otp')
@@ -149,6 +160,16 @@ def usersignup(request):
             messages.error(request, "Username already exists.")
         else:
             user = User.objects.create_user(username=username, email=email, password=password)
+            user.save()
+            user_datas = [{
+                "user_id": user.id,
+                "product":'',
+                "search": ''
+            }]
+            df=pd.DataFrame(user_datas)
+            user_vectors = vectorize_user_with_search(df)
+            # print('User vector in register',user_vectors)
+            user.vector_data = json.dumps(user_vectors[0].tolist())
             user.save()
             messages.success(request, "Account created successfully!")
             return redirect('userlogin')  

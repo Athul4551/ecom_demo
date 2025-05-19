@@ -21,8 +21,28 @@ class Gallery(models.Model):
     image2=models.FileField(upload_to='gallery_images/', null=True, blank=True)
     image3=models.FileField(upload_to='gallery_images/', null=True, blank=True)
 
+
+    rating=models.FloatField(default=0)
+    vector_data=models.TextField(null=True)
+
     def __str__(self):
         return self.name
+class users(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    vector_data=models.TextField(null=True)
+    
+    def __str__(self):
+        return self.user.username
+
+
+class ViewHistory(models.Model):
+    product=models.ForeignKey(Gallery,on_delete=models.CASCADE)
+    user=models.ForeignKey(users,on_delete=models.CASCADE)
+    
+class SearchHistory(models.Model):
+    query = models.CharField(max_length=255)
+    user = models.ForeignKey(users, on_delete=models.CASCADE)
+
 
 class Cart(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -87,6 +107,14 @@ class Address(models.Model):
     name=models.CharField(max_length=225)
     address=models.TextField()
     phone=models.CharField(max_length=12)
+
+
+
+class reviews(models.Model):
+    rating=models.IntegerField()
+    description=models.TextField()
+    uname=models.ForeignKey(users,on_delete=models.CASCADE)
+    pname=models.ForeignKey(Gallery,on_delete=models.CASCADE)    
     
     
     
