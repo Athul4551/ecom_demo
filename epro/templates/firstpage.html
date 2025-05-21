@@ -17,7 +17,7 @@
            <a href="{% url 'aboutus' %}"><div class="ele">About Us</div></a>
            <a href="{% url 'cart_view' %}"><div class="ele">views cart</div></a> 
            <div class="search">
-            <form method="GET" action="{% url 'search_results' %}">
+            <form method="post" action="{% url 'search_results' %}">
                 {% csrf_token %}
                 <input type="text" name="search" placeholder="Search products..." required>
                 <button type="submit">Search</button>
@@ -88,6 +88,7 @@
 </div>
           
     <div class="gallery-wrapper">
+        <h3>New Arrivals</h3>
         <div class="gallery">
             {% for i in gallery_images %}
             <a href="{% url 'product' i.id %}">
@@ -114,35 +115,35 @@
         </div>
     </div>
 
-<h3>recomended products</h3>
+<!-- Recommended Products -->
     <div class="gallery-wrapper">
+        <h3>Recommended Products</h3>
         <div class="gallery">
             {% if products %}
-            {% for i in products %}
-            <a href="{% url 'product' i.id %}">
-                <div class="hh">
-                    <img src="{{ i.feedimage.url }}" alt="Gallery Image">
-                    <div class="product-info">
-                        <p>{{ i.name }}</p>
-                        <p>₹{{ i.price }}</p>
-                        <p>{{ i.model }}</p>
-                        
-                        {% if i.quantity > 0 %}
-
-                        <p style="color: GREEN;">in stock</p>
-
-                        {% else %}
-                        
-                        <p style="color: RED;">out of stock</p>
-
-                        {% endif %}
-
-                    </div>
-                </div></a>
-             {% endfor %}
-             {% else %}
-             <p>No products found.</p>
-             {% endif %}
+                {% for i in products %}
+                    <a href="{% url 'product' i.id %}">
+                        <div class="hh">
+                            {% if i.feedimage %}
+                                <img src="{{ i.feedimage.url }}" alt="{{ i.name }}">
+                            {% else %}
+                                <img src="{% static 'images/placeholder.jpg' %}" alt="Placeholder">
+                            {% endif %}
+                            <div class="product-info">
+                                <p>{{ i.name }}</p>
+                                <p>₹{{ i.price }}</p>
+                                <p>{{ i.model }}</p>
+                                {% if i.quantity > 0 %}
+                                    <p style="color: green;">In stock</p>
+                                {% else %}
+                                    <p style="color: red;">Out of stock</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </a>
+                {% endfor %}
+            {% else %}
+                <p>No recommended products available.</p>
+            {% endif %}
         </div>
     </div>
     <footer>
