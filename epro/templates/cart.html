@@ -307,6 +307,9 @@
 
     /* Footer */
         footer {
+          position: fixed;
+          bottom: 0;
+          width: 100%;
             background: #172337;
             color: white;
             padding: 48px 24px;
@@ -451,7 +454,7 @@
        <a href="{% url 'cart_view' %}"><div class="ele">views cart</div></a> 
         <div class="search">
             <form method="GET" action="{% url 'search_results' %}">
-                <input type="text" name="q" placeholder="Search products..." required>
+                <input type="text" name="search" placeholder="Search products..." required>
                 <button type="submit">Search</button>
             </form>
         </div>

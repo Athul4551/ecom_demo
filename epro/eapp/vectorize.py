@@ -28,6 +28,7 @@ def process_search(search):
 def combine_product_with_reviews(product_data):
     """Combine product metadata and the review essence to generate a combined vector."""
     combined_text = f"Product Name: {product_data['name']}, Rating: {product_data['rating']}, " \
+                    f"model: {product_data['model']}, " \
                     f"Description: {product_data['description']}"
     
     product_vector = model.encode(combined_text)  # Vectorize the course metadata

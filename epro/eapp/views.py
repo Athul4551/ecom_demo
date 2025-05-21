@@ -18,8 +18,33 @@ import razorpay
 import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from sentence_transformers import SentenceTransformer
 
 
+
+
+
+
+def getuser(request):
+    return request.session.get('user')
+
+
+def filter_price(data, price):
+    price2 = []
+    for i in data:
+        for j in price:
+            if i.pk == j.product.pk:
+                price2.append(j)
+                break
+    return price2
+
+
+def types(request):
+    type2 = []
+    for i in Gallery.objects.all():
+        if i.name and i.name.name not in type2:
+            type2.append(i.name.name)
+    return type2
 
 
 def index(request):
@@ -143,14 +168,17 @@ def allproducts(request):
         "gallery_images": gallery_images,
         "cart_item_count": cart_item_count
     })   
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
 def usersignup(request):
-    if request.POST:
+    if request.method == 'POST':  # Use request.method for clarity
         email = request.POST.get('email')
         username = request.POST.get('username')
         password = request.POST.get('password')
         confirmpassword = request.POST.get('confpassword')
 
-        if not username or not email or not password or not confirmpassword:
+        # Validation checks
+        if not all([username, email, password, confirmpassword]):
             messages.error(request, 'All fields are required.')
         elif confirmpassword != password:
             messages.error(request, "Passwords do not match.")
@@ -159,20 +187,45 @@ def usersignup(request):
         elif User.objects.filter(username=username).exists():
             messages.error(request, "Username already exists.")
         else:
-            user = User.objects.create_user(username=username, email=email, password=password)
-            user.save()
-            user_datas = [{
-                "user_id": user.id,
-                "product":'',
-                "search": ''
-            }]
-            df=pd.DataFrame(user_datas)
-            user_vectors = vectorize_user_with_search(df)
-            # print('User vector in register',user_vectors)
-            user.vector_data = json.dumps(user_vectors[0].tolist())
-            user.save()
-            messages.success(request, "Account created successfully!")
-            return redirect('userlogin')  
+            try:
+                # Create and save the Django User
+                user = User.objects.create_user(username=username, email=email, password=password)
+                user.save()
+
+                # Create meaningful initial data for the user vector
+                user_datas = [{
+                    "user_id": user.id,
+                    "product": "new_user",  # Placeholder; replace with meaningful data if possible
+                    "search": "initial_signup"  # Placeholder; replace with meaningful data if possible
+                }]
+                df = pd.DataFrame(user_datas)
+
+                # Generate the vector using the vectorize_user_with_search function
+                user_vectors = vectorize_user_with_search(df)
+
+                # Check if vectors were successfully created
+                if user_vectors and len(user_vectors) > 0:
+                    # Create a users model instance
+                    user_profile = users.objects.create(
+                        user=user,
+                        vector_data=json.dumps(user_vectors[0].tolist())
+                    )
+                    user_profile.save()
+                    print(f"Vector created and saved successfully for user: {username}")
+                else:
+                    print(f"Failed to create vector for user: {username}")
+
+                messages.success(request, "Account created successfully!")
+                return redirect('userlogin')
+
+            except Exception as e:
+                # Log the error but allow user creation
+                print(f"Error creating vector for user {username}: {str(e)}")
+                # Still create a users model instance without vector data
+                user_profile = users.objects.create(user=user, vector_data=None)
+                user_profile.save()
+                messages.success(request, "Account created successfully, but personalization data could not be initialized.")
+                return redirect('userlogin')
 
     return render(request, "userregister.html")
 def userlogin(request):
@@ -199,17 +252,6 @@ def userlogin(request):
 #     return render(request,'products.html',{"gallery_images": gallery_images,})
 @login_required(login_url='userlogin')
 def product(request, id):
-    # gallery_images = Gallery.objects.filter(pk=id)
-    # if request.user.is_authenticated:
-    #     cart_item_count = Cart.objects.filter(user=request.user).count()
-    # else:
-    #     cart_item_count = 0 
-    
-    # return render(request, 'products.html', {
-    #     "gallery_images": gallery_images,
-    #     "cart_item_count": cart_item_count
-    # })
-    
     try:
         product = Gallery.objects.get(id=id)
         gallery_images = Gallery.objects.filter(id=id)  # Adjust based on your query logic
@@ -220,10 +262,43 @@ def product(request, id):
     except Gallery.DoesNotExist:
         messages.error(request, "Product not found.")
         return redirect('product_not_found')
+    user = request.user
+    user_name, created = users.objects.get_or_create(name=user)
+    # Track view history
+    ViewHistory.objects.create(user=user_name, product=product)
+
+    # Prepare view history data for vectorization
+    existing_user_data = ViewHistory.objects.filter(user=user_name)
+    existing_products = [history.product.name for history in existing_user_data]
+    data = [{
+        'user_id': user_name.id,
+        'product': ','.join(existing_products),
+        'search': ''
+    }]
+    df = pd.DataFrame(data)
+
+    # Vectorize and save
+    try:
+        user_vectors = vectorize_user_with_search(df)
+        user_name.vector_data = json.dumps(user_vectors[0].tolist())
+        user_name.save()
+    except Exception as e:
+        print(f"Vectorization failed: {e}")
+
+    # Fetch reviews
+    rs = reviews.objects.filter(pname=product)
+    
+    # ✅ FIX: Check if user has reviewed instead of trying to get specific review
+    isReviewed = reviews.objects.filter(uname=user_name, pname=product).exists()
+
+    # Track view history
+    ViewHistory.objects.create(user=user_name, product=product)
 
     context = {
         'gallery_images': gallery_images,
         'cart_product_ids': cart_product_ids,
+        'isReviewed': isReviewed,
+        'reviews': rs,
     }
     return render(request, 'products.html', context)
 def review(request):
@@ -666,10 +741,274 @@ def buy_now(request, product_id):
 def order_confirmation(request, order_id):
     order = get_object_or_404(Order, id=order_id, user=request.user)
     return render(request, 'order_confirmation.html', {'order': order})
-def search_results(request):
-    query = request.GET.get('q')
-    results = Gallery.objects.filter(name__icontains=query) if query else None
-    return render(request, 'search_results.html', {'results': results, 'query': query}) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def getuser(request):
+    return request.session.get('user')
+
+
+# def filter_price(data, price):
+#     price2 = []
+#     for i in data:
+#         for j in price:
+#             if i.pk == j.product.pk:
+#                 price2.append(j)
+#                 break
+#     return price2
+
+
+def types(request):
+    type2 = []
+    for i in Gallery.objects.all():
+        if i.model and i.model not in type2:
+            type2.append(i.model)
+    return type2
+
+def search_func(request):
+    if request.method == 'POST':
+        inp = request.POST['search']
+        
+
+        auth_user = None
+        users_data = None
+
+        if 'user' in request.session:
+            try:
+                auth_user = User.objects.get(username=request.session['user'])
+                users_data = users.objects.get(name=auth_user)
+            except (User.DoesNotExist, users.DoesNotExist):
+                auth_user = None
+                users_data = None
+
+            if users_data and auth_user:
+                # Save search query
+                SearchHistory.objects.create(query=inp, user=users_data)
+
+                # Get user search history
+                user_search = SearchHistory.objects.filter(user=users_data)
+                user_search = [s.query for s in user_search]
+
+                # Get view history
+                user_products = ViewHistory.objects.filter(user=users_data)
+                user_products = [s.product.name for s in user_products]
+
+                # Prepare data for vectorization
+                user_data = [{
+                    'user_id': auth_user.id,
+                    'product': ','.join(user_products) if user_products else '',
+                    'search': ','.join(user_search) if user_search else ''
+                }]
+
+                df = pd.DataFrame(user_data)
+
+                # Vectorize
+                user_vectors = vectorize_user_with_search(df)
+                users_data.vector_data = json.dumps(user_vectors[0].tolist())
+                users_data.save()
+
+        # Search for products by name or category
+        products_by_name = Gallery.objects.filter(name__icontains=inp)  # Changed from iexact to icontains
+        products_by_category = Gallery.objects.filter(model__name__icontains=inp)  # Changed from iexact to icontains
+        pro_name = (products_by_name | products_by_category).distinct()
+
+        
+
+        return render(request, 'search_results.html', {
+            'shoe_category': types(request),
+            'user': getuser(request),
+            'query': inp,
+            'products': pro_name
+        })
+    
+    # Handle GET requests - redirect to home or show empty search
+    return redirect('firstpage') 
+
+
+
+
+
+
+
+
+####################################my code###############################################
+
+
+
+
+
+
+
+# Initialize Sentence-BERT model once globally
+# model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# def getuser(request):
+#     """Helper function to get the authenticated user from session."""
+#     if 'user' in request.session:
+#         try:
+#             return User.objects.get(username=request.session['user'])
+#         except User.DoesNotExist:
+#             return None
+#     return None
+
+# def types(request):
+#     """Get unique model names from Gallery objects."""
+#     return list(set(i.model for i in Gallery.objects.all() if i.model))
+
+# def process_reviews(reviews):
+#     """Vectorize each review and return the average vector."""
+#     if reviews:
+#         review_list = reviews.split(',')
+#         review_vectors = model.encode(review_list)
+#         return review_vectors.mean(axis=0)
+#     return None
+
+# def process_search(search):
+#     """Vectorize search queries and return the average vector."""
+#     if search:
+#         search_list = search.split(',')
+#         search_vectors = model.encode(search_list)
+#         return search_vectors.mean(axis=0)
+#     return None
+
+# def combine_product_with_reviews(product_data):
+#     """Combine product metadata and reviews to generate a vector."""
+#     combined_text = f"Product Name: {product_data['name']}, Rating: {product_data['rating']}, " \
+#                     f"model: {product_data['model']}, Description: {product_data['description']}"
+#     product_vector = model.encode(combined_text)
+#     review_vector = process_reviews(product_data['reviews'])
+#     return product_vector + review_vector if review_vector is not None else product_vector
+
+# def vectorize_product_with_reviews(df):
+#     """Vectorize all products in the dataframe."""
+#     return [combine_product_with_reviews(product) for _, product in df.iterrows()]
+
+# def combine_user_with_search(user_data):
+#     """Combine user metadata and search history to generate a vector."""
+#     combined_text = f"user_id: {user_data['user_id']}, product: {user_data['product']}"
+#     user_vector = model.encode(combined_text)
+#     search_vector = process_search(user_data['search'])
+#     return user_vector + search_vector if search_vector is not None else user_vector
+
+# def vectorize_user_with_search(df):
+#     """Vectorize all users in the dataframe."""
+#     return [combine_user_with_search(user) for _, user in df.iterrows()]
+
+# def search_func(request):
+#     """
+#     Handle search requests, save search history, and rank results using AI.
+#     """
+#     # Handle both GET and POST requests (template uses GET)
+#     if request.method in ['GET', 'POST']:
+#         # Get query from 'q' (matches template) or 'search'
+#         query = request.GET.get('q') or request.POST.get('search')
+        
+#         if not query:  # If no query, show empty results
+#             return render(request, 'search_results.html', {
+#                 'shoe_category': types(request),
+#                 'user': getuser(request),
+#                 'query': '',
+#                 'results': Gallery.objects.none()
+#             })
+
+#         query = query.strip()  # Clean query
+#         auth_user = getuser(request)
+#         users_data = None
+
+#         # Handle authenticated user
+#         if auth_user:
+#             try:
+#                 users_data = users.objects.get(user=auth_user)  # Use 'user' field
+#             except users.DoesNotExist:
+#                 users_data = users.objects.create(user=auth_user)  # Create if not exists
+
+#             if users_data and query:
+#                 # Save search query (avoid duplicates)
+#                 if not SearchHistory.objects.filter(user=users_data, query=query).exists():
+#                     try:
+#                         SearchHistory.objects.create(query=query, user=users_data)
+#                     except Exception as e:
+#                         print(f"Error saving search history: {e}")
+
+#                 # Get user search and view history
+#                 user_search = SearchHistory.objects.filter(user=users_data).values_list('query', flat=True)
+#                 user_products = ViewHistory.objects.filter(user=users_data).select_related('product').values_list('product__name', flat=True)
+
+#                 # Prepare user data for vectorization
+#                 user_data = [{
+#                     'user_id': auth_user.id,
+#                     'product': ','.join(user_products) if user_products else '',
+#                     'search': ','.join(user_search) if user_search else ''
+#                 }]
+
+#                 # Vectorize user data
+#                 df = pd.DataFrame(user_data)
+#                 user_vectors = vectorize_user_with_search(df)
+#                 users_data.vector_data = json.dumps(user_vectors[0].tolist())
+#                 users_data.save()
+
+#         # Search products by name, model, or description
+#         products = Gallery.objects.filter(
+#             Q(name__icontains=query) |
+#             Q(model__icontains=query) |
+#             Q(description__icontains=query)
+#         ).distinct()
+
+#         # AI-driven ranking
+#         if products.exists():
+#             query_vector = model.encode(query)
+#             product_data = [{
+#                 'name': p.name,
+#                 'rating': p.rating,
+#                 'model': p.model,
+#                 'description': p.description or '',
+#                 'reviews': ','.join(reviews.objects.filter(pname=p).values_list('description', flat=True))
+#             } for p in products]
+
+#             df_products = pd.DataFrame(product_data)
+#             product_vectors = []
+
+#             # Use cached vectors or compute new ones
+#             for idx, p in enumerate(products):
+#                 if p.vector_data:
+#                     vector = np.array(json.loads(p.vector_data))
+#                 else:
+#                     vector = combine_product_with_reviews(df_products.iloc[idx])
+#                     p.vector_data = json.dumps(vector.tolist())
+#                     p.save()
+#                 product_vectors.append(vector)
+
+#             # Calculate cosine similarity
+#             similarities = [1 - cosine(query_vector, pv) for pv in product_vectors]
+#             for idx, product in enumerate(products):
+#                 product.similarity = similarities[idx]
+#             products = sorted(products, key=lambda x: x.similarity, reverse=True)
+
+#         return render(request, 'search_results.html', {
+#             'shoe_category': types(request),
+#             'user': auth_user,
+#             'query': query,
+#             'results': products  # Match template
+#         })
+
+#     # Redirect to home for unsupported methods
+#     return redirect('firstpage')
+
+
+
+
+
 
 
 def update_order_status(request, order_id):
