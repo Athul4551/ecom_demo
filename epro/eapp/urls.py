@@ -37,6 +37,8 @@ urlpatterns = [
    path('allproducts/', views.allproducts, name='allproducts'),
    path('order-success/', views.order_success, name='order_success'),
    path('orders/update-status/<int:order_id>/', views.update_order_status, name='update_order_status'),
+   path('add_review/<int:product_id>/', views.addReview, name='addReview'),
+   path('review/<int:pk>/', views.addReview, name='addReview'),
   
    
    

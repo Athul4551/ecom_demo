@@ -5,6 +5,7 @@ from django.contrib.auth import authenticate, login,logout
 from django.core.mail import send_mail
 from django.conf import settings
 import random
+from django.urls import reverse
 from datetime import datetime, timedelta
 from .models import *
 from django.shortcuts import get_object_or_404, redirect, render
@@ -364,7 +365,59 @@ def userlogin(request):
 #     return render(request,'products.html',{"gallery_images": gallery_images,})
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-@login_required(login_url='userlogin')
+# @login_required(login_url='userlogin')
+# def product(request, id):
+#     try:
+#         product = Gallery.objects.get(id=id)
+#         gallery_images = Gallery.objects.filter(id=id)
+#         cart_items = Cart.objects.filter(user=request.user)
+#         cart_product_ids = [item.product.id for item in cart_items]
+#     except Gallery.DoesNotExist:
+#         messages.error(request, "Product not found.")
+#         return redirect('product_not_found')
+
+#     # Use the 'user' field instead of 'name' for get_or_create
+#     user_name, created = users.objects.get_or_create(user=request.user)
+
+#     # Track view history
+#     ViewHistory.objects.create(user=user_name, product=product)
+
+#     # Prepare view history data for vectorization
+#     existing_user_data = ViewHistory.objects.filter(user=user_name)
+#     existing_products = [history.product.name for history in existing_user_data]
+#     data = [{
+#         'user_id': user_name.id,
+#         'product': ','.join(existing_products),
+#         'search': ''
+#     }]
+#     df = pd.DataFrame(data)
+
+#     # Vectorize and save
+#     try:
+#         user_vectors = vectorize_user_with_search(df)
+#         user_name.vector_data = json.dumps(user_vectors[0].tolist())
+#         user_name.save()
+#     except Exception as e:
+#         print(f"Vectorization failed: {e}")
+
+#     # Fetch reviews
+#     rs = reviews.objects.filter(pname=product)
+    
+#     # Check if user has reviewed
+#     isReviewed = reviews.objects.filter(uname=user_name, pname=product).exists()
+
+#     context = {
+#         'gallery_images': gallery_images,
+#         'cart_product_ids': cart_product_ids,
+#         'isReviewed': isReviewed,
+#         'reviews': rs,
+#     }
+#     return render(request, 'products.html', context)
+
+
+
+
+
 def product(request, id):
     try:
         product = Gallery.objects.get(id=id)
@@ -373,37 +426,40 @@ def product(request, id):
         cart_product_ids = [item.product.id for item in cart_items]
     except Gallery.DoesNotExist:
         messages.error(request, "Product not found.")
-        return redirect('product_not_found')
+        return redirect('firstpage')  # Update to your actual redirect
 
-    # Use the 'user' field instead of 'name' for get_or_create
-    user_name, created = users.objects.get_or_create(user=request.user)
+    if request.user.is_authenticated:
+        # Get or create user profile
+        user_name, created = users.objects.get_or_create(user=request.user)
 
-    # Track view history
-    ViewHistory.objects.create(user=user_name, product=product)
+        # Track view history
+        ViewHistory.objects.create(user=user_name, product=product)
 
-    # Prepare view history data for vectorization
-    existing_user_data = ViewHistory.objects.filter(user=user_name)
-    existing_products = [history.product.name for history in existing_user_data]
-    data = [{
-        'user_id': user_name.id,
-        'product': ','.join(existing_products),
-        'search': ''
-    }]
-    df = pd.DataFrame(data)
+        # Prepare view history data for vectorization
+        existing_user_data = ViewHistory.objects.filter(user=user_name)
+        existing_products = [history.product.name for history in existing_user_data]
+        data = [{
+            'user_id': user_name.id,
+            'product': ','.join(existing_products),
+            'search': ''
+        }]
+        df = pd.DataFrame(data)
 
-    # Vectorize and save
-    try:
-        user_vectors = vectorize_user_with_search(df)
-        user_name.vector_data = json.dumps(user_vectors[0].tolist())
-        user_name.save()
-    except Exception as e:
-        print(f"Vectorization failed: {e}")
+        # Vectorize and save
+        try:
+            user_vectors = vectorize_user_with_search(df)
+            user_name.vector_data = json.dumps(user_vectors[0].tolist())
+            user_name.save()
+        except Exception as e:
+            print(f"Vectorization failed: {e}")
+    else:
+        user_name = None
 
     # Fetch reviews
     rs = reviews.objects.filter(pname=product)
-    
+
     # Check if user has reviewed
-    isReviewed = reviews.objects.filter(uname=user_name, pname=product).exists()
+    isReviewed = reviews.objects.filter(uname__user=request.user, pname=product).exists() if request.user.is_authenticated else False
 
     context = {
         'gallery_images': gallery_images,
@@ -412,6 +468,9 @@ def product(request, id):
         'reviews': rs,
     }
     return render(request, 'products.html', context)
+
+
+
 def review(request):
     return render(request,"review.html")
 def aboutus(request):
@@ -1734,3 +1793,102 @@ def callback_cart1(request):
         error_message = request.GET.get("error", "Invalid request")
         print(f"Debug: Non-POST request with error={error_message}")
         return render(request, "callback.html", context={"status": "failure", "message": error_message})
+
+
+
+
+
+
+
+
+
+
+
+
+@login_required
+def addReview(request, pk):
+    try:
+        prod = Gallery.objects.get(pk=pk)
+    except Gallery.DoesNotExist:
+        messages.error(request, "Product not found.")
+        return redirect('firstpage')
+
+    if request.method == 'POST':
+        rating = request.POST.get('rating')
+        description = request.POST.get('description')
+
+        # Validate inputs
+        if not rating or not description:
+            messages.error(request, "Rating and description are required.")
+            return redirect(reverse('product', args=[pk]))
+
+        try:
+            rating = int(rating)
+            if rating < 1 or rating > 5:
+                raise ValueError
+        except ValueError:
+            messages.error(request, "Invalid rating. Please select a rating between 1 and 5.")
+            return redirect(reverse('product', args=[pk]))
+
+        try:
+            user_profile = users.objects.get(user=request.user)
+        except users.DoesNotExist:
+            messages.error(request, "User profile not found. Please contact support.")
+            return redirect('userlogin')
+
+        # Check for existing review
+        if reviews.objects.filter(uname=user_profile, pname=prod).exists():
+            messages.error(request, "You have already reviewed this product.")
+            return redirect(reverse('product', args=[pk]))
+
+        # Create and save review
+        data = reviews.objects.create(
+            rating=rating,
+            description=description,
+            uname=user_profile,
+            pname=prod
+        )
+        data.save()
+
+        # Update product rating
+        rev = reviews.objects.filter(pname=prod)
+        total = [i.rating for i in rev]
+        if total:
+            total_rating = round(sum(total) / len(total), 1)
+            prod.rating = total_rating
+        else:
+            prod.rating = rating
+        prod.save()
+
+        # Vectorize product with reviews
+        comments = [i.description for i in rev]
+        pro_data = [{
+            "pro_id": prod.id,
+            "name": prod.name,
+            "rating": prod.rating,
+            "model": getattr(prod, 'model', ''),
+            "reviews": ','.join(comments)
+        }]
+        df = pd.DataFrame(pro_data)
+        try:
+            product_vector = vectorize_product_with_reviews(df)
+            prod.vector_data = json.dumps(product_vector[0].tolist())
+            prod.save()
+        except Exception as e:
+            print(f"Vectorization failed: {e}")
+            messages.warning(request, "Review saved, but vectorization failed. Contact support.")
+
+        messages.success(request, "Review submitted successfully!")
+        return redirect(reverse('product', args=[pk]))
+    else:
+        reviews_list = reviews.objects.filter(pname=prod)
+        cart_items = Cart.objects.filter(user=request.user)
+        cart_product_ids = [item.product.id for item in cart_items]
+        isReviewed = reviews.objects.filter(uname__user=request.user, pname=prod).exists()
+        context = {
+            'gallery_images': [prod],
+            'reviews': reviews_list,
+            'cart_product_ids': cart_product_ids,
+            'isReviewed': isReviewed
+        }
+        return render(request, 'products.html', context)
