@@ -417,7 +417,7 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 
 
 
-
+@login_required(login_url='userlogin')
 def product(request, id):
     try:
         product = Gallery.objects.get(id=id)

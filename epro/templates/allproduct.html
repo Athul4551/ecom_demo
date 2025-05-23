@@ -18,11 +18,12 @@
            <a href="{% url 'aboutus' %}"><div class="ele">About Us</div></a>
            <a href="{% url 'cart_view' %}"><div class="ele">views cart</div></a>
             <div class="search">
-                <form method="GET" action="{% url 'search_results' %}">
-                    <input type="text" name="q" placeholder="Search products..." required>
-                    <button type="submit">Search</button>
-                </form>
-            </div>
+            <form method="post" action="{% url 'search_results' %}">
+                {% csrf_token %}
+                <input type="text" name="search" placeholder="Search products..." required>
+                <button type="submit">Search</button>
+            </form>
+        </div>
             {% comment %} <div class="ice">
                 <div class="ice1">F</div>
                 <div class="ice1">IN</div>

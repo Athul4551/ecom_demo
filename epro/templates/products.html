@@ -21,6 +21,7 @@
             --white: #ffffff;
             --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             --font-stack: 'Roboto', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            --star-color: #f4c01e;
         }
 
         * {
@@ -267,7 +268,7 @@
         }
 
         .rating .stars i {
-            color: #f4c01e;
+            color: var(--star-color);
         }
 
         .rating .reviews {
@@ -365,7 +366,6 @@
             padding: 24px;
             background: var(--white);
             border-radius: 8px;
-            /* box-shadow: var(--shadow); */
         }
 
         .reviews-section h3 {
@@ -389,7 +389,25 @@
             box-shadow: var(--shadow);
         }
 
-        .review-form select,
+        .review-form .star-rating {
+            display: flex;
+            gap: 8px;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .review-form .star-rating i {
+            color: var(--text-light);
+            transition: color 0.2s ease, transform 0.2s ease;
+        }
+
+        .review-form .star-rating i:hover,
+        .review-form .star-rating i.selected,
+        .review-form .star-rating i.active {
+            color: var(--star-color);
+            transform: scale(1.2);
+        }
+
         .review-form textarea {
             padding: 12px;
             border: 1px solid var(--border-color);
@@ -397,19 +415,15 @@
             font-size: 14px;
             background: var(--white);
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            resize: vertical;
+            min-height: 120px;
+            max-height: 300px;
         }
 
-        .review-form select:focus,
         .review-form textarea:focus {
             border-color: var(--flipkart-blue);
             box-shadow: 0 0 6px rgba(40, 116, 240, 0.3);
             outline: none;
-        }
-
-        .review-form textarea {
-            resize: vertical;
-            min-height: 120px;
-            max-height: 300px;
         }
 
         .review-form button {
@@ -466,7 +480,7 @@
         }
 
         .review-item .rating i {
-            color: #f4c01e;
+            color: var(--star-color);
             font-size: 16px;
         }
 
@@ -614,6 +628,10 @@
                 right: 10px;
                 max-width: 90%;
             }
+
+            .review-form .star-rating {
+                font-size: 18px;
+            }
         }
 
         @media (max-width: 480px) {
@@ -635,6 +653,10 @@
 
             .review-item {
                 padding: 16px;
+            }
+
+            .review-form .star-rating {
+                font-size: 16px;
             }
         }
     </style>
@@ -659,7 +681,7 @@
             <a href="{% url 'aboutus' %}"><div class="ele">About Us</div></a>
             <a href="{% url 'cart_view' %}"><div class="ele">View Cart</div></a>
             <div class="search">
-                <!-- <form method="GET" action="{% url 'search_results' %}">
+                <!-- <form method="GET" action="% url 'search_results' %">
                     <input type="text" name="q" placeholder="Search products..." required>
                     <button type="submit" class="button">Search</button>
                 </form> -->
@@ -743,14 +765,14 @@
                 {% else %}
                 <form class="review-form" method="POST" action="{% url 'addReview' pk=i.id %}">
                     {% csrf_token %}
-                    <select name="rating" required>
-                        <option value="" disabled selected>Select Rating</option>
-                        <option value="1">1 Star</option>
-                        <option value="2">2 Stars</option>
-                        <option value="3">3 Stars</option>
-                        <option value="4">4 Stars</option>
-                        <option value="5">5 Stars</option>
-                    </select>
+                    <div class="star-rating" data-rating="0">
+                        <i class="far fa-star" data-value="1"></i>
+                        <i class="far fa-star" data-value="2"></i>
+                        <i class="far fa-star" data-value="3"></i>
+                        <i class="far fa-star" data-value="4"></i>
+                        <i class="far fa-star" data-value="5"></i>
+                        <input type="hidden" name="rating" value="0" required>
+                    </div>
                     <textarea name="description" placeholder="Write your review..." required></textarea>
                     <button type="submit"><i class="fas fa-paper-plane"></i> Submit Review</button>
                 </form>
@@ -829,6 +851,7 @@
 
     <script>
         document.addEventListener("DOMContentLoaded", function() {
+            // Thumbnail gallery functionality
             const thumbnails = document.querySelectorAll('.thumbnails img');
             const mainImage = document.querySelector('.main-image img');
 
@@ -837,6 +860,53 @@
                     thumbnails.forEach(t => t.classList.remove('active'));
                     this.classList.add('active');
                     mainImage.src = this.src;
+                });
+            });
+
+            // Star rating functionality
+            const starRatings = document.querySelectorAll('.review-form .star-rating');
+            starRatings.forEach(starRating => {
+                const stars = starRating.querySelectorAll('i');
+                const ratingInput = starRating.querySelector('input[name="rating"]');
+
+                stars.forEach(star => {
+                    star.addEventListener('click', function() {
+                        const rating = this.getAttribute('data-value');
+                        ratingInput.value = rating;
+
+                        stars.forEach(s => {
+                            s.classList.remove('fas', 'selected');
+                            s.classList.add('far');
+                            if (s.getAttribute('data-value') <= rating) {
+                                s.classList.remove('far');
+                                s.classList.add('fas', 'selected');
+                            }
+                        });
+                    });
+
+                    star.addEventListener('mouseover', function() {
+                        const rating = this.getAttribute('data-value');
+                        stars.forEach(s => {
+                            s.classList.remove('fas');
+                            s.classList.add('far');
+                            if (s.getAttribute('data-value') <= rating) {
+                                s.classList.remove('far');
+                                s.classList.add('fas');
+                            }
+                        });
+                    });
+
+                    star.addEventListener('mouseout', function() {
+                        const currentRating = ratingInput.value;
+                        stars.forEach(s => {
+                            s.classList.remove('fas');
+                            s.classList.add('far');
+                            if (s.getAttribute('data-value') <= currentRating) {
+                                s.classList.remove('far');
+                                s.classList.add('fas', 'selected');
+                            }
+                        });
+                    });
                 });
             });
         });
